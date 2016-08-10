@@ -9,6 +9,17 @@ import os
 import re
 
 global URL
+global REMOVE_ATTRIBUTES
+
+def set_unnecessary_attributes():
+  global REMOVE_ATTRIBUTES
+  REMOVE_ATTRIBUTES = [
+    'lang','language','onmouseover','onmouseout','script','style','font',
+    'dir','face','size','color','style','class','width','height','hspace',
+    'border','valign','align','background','bgcolor','text','link','vlink',
+    'alink','cellpadding','cellspacing', 'data-src', 'master_src', 'master_h', 
+    'master_w']
+
 
 def get_url():
     global URL
@@ -28,6 +39,12 @@ def _remove_attrs(soup):
     for tag in soup.findAll(True): 
         tag.attrs = {}
     return soup
+
+def remove_attributes(soup):
+  for attr in soup.attrs.keys():
+    if attr in REMOVE_ATTRIBUTES:
+      soup[attr] = None
+  return soup
 
 def get_matches(html_doc):
     soup = BeautifulSoup(html_doc, 'lxml')
@@ -49,7 +66,7 @@ def get_matches(html_doc):
     f = open(abs_file_path ,'w')
 
     #Start writing to HTML file
-    f.write('<!doctype html><html><head><title>'+title+'</title><meta author="stackexchange.com"></head><body>')
+    f.write('<!DOCTYPE html><html><head><title>'+title+'</title><meta author="stackexchange.com"></head><body>')
     f.write ('<h1>'+title+'</h1>')
 
     main_area = soup.find('div', class_='layout_2col_main')
@@ -68,8 +85,6 @@ def get_matches(html_doc):
       maybe_num_of_answers = d.find('div', class_='QuestionPageAnswerHeader', recursive=False)
       maybe_answer_list_div = d.find('div', class_='AnswerPagedList', recursive=False)
 
-      maybe_answer_text = d.parent.find('div', {'id' : re.compile('_answer_content$')})
-
       if maybe_num_of_answers is not None:
         num_of_answers = maybe_num_of_answers.find('div', class_='answer_count').find(text=True).strip()
         f.write('<h2>' + num_of_answers + '</h2>')
@@ -83,20 +98,33 @@ def get_matches(html_doc):
               f.write ('<p><b>' + answerer_name + '</b>')
             else:
               answerer_name = maybe_answerer_name.find('a', class_='user').text.strip()
-              answerer_details = maybe_answerer_name.find('span', class_='rendered_qtext').text.strip()
-              f.write ('<p><b>' + answerer_name + '</b>, <i>' + answerer_details + '</i>')
+              if maybe_answerer_name.find('span', class_='rendered_qtext') is not None:
+                answerer_details = maybe_answerer_name.find('span', class_='rendered_qtext').text.strip()
+                f.write ('<p><b>' + answerer_name + '</b>, <i>' + answerer_details + '</i>')
+              else:
+                f.write ('<p><b>' + answerer_name + '</b>')
             number_of_views = ans.find('div', class_='CredibilityFacts').text.strip()
             f.write('<br/>' + number_of_views + '</p>')
             ans_text = ans.find('div', class_='ExpandedAnswer').find('span', class_='rendered_qtext')
+            
+            imgs = ans_text.findAll('img')
+            if imgs is not None:
+              [s.extract() for s in soup('canvas')]
+              for image in imgs:
+                img_url = image['master_src']
+                m = re.search('(.*)\?convert_to_webp', img_url)
+                img_url = m.group(1)
+                file_name = 'html/'+img_url.split('/')[-1] + '.jpg'
+                abs_file_name = os.path.join(script_dir, file_name)
+                urlretrieve(img_url, abs_file_name)
+                image['src'] = img_url.split('/')[-1] + '.jpg'
+                image = remove_attributes(image)
             f.write('<p>' + str(ans_text) + '</p>')
-
-      elif maybe_answer_text is not None:
-        ans_text = maybe_answer_text.div.div.span
 
     f.write('</body></html>')
     f.close()
 
-
+set_unnecessary_attributes()
 get_url()
 html_doc = get_html()
 print ('Connection established')
